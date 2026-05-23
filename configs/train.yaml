@@ -1,0 +1,32 @@
+# @package _global_
+#
+# Hydra root config for `src.train` — the pixel-supervision ablation
+# (App. E.1 of the paper). The probing protocol lives under probing/ and
+# uses an entirely separate Hydra root (probing/configs/fit.yaml).
+
+defaults:
+  - _self_
+  - data:     cyclone_hf     # only datamodule kept; see configs/data/.
+  - model:    simple_cnn     # one of: simple_cnn, resnet50
+  - callbacks: default
+  - logger:   wandb          # only logger kept; switch to `null` for offline
+  - trainer:  default
+  - paths:    default
+  - extras:   default
+  - hydra:    default
+  - experiment: null         # configs/experiment/<name>.yaml
+  - optional local: default  # gitignored host-local override (configs/local/)
+  - debug:    null           # configs/debug/default.yaml
+
+task_name: "train"
+tags: ["pixel-sup"]
+
+# Toggle training/test phases. Camera-ready ablation always runs both.
+train: True
+test:  True
+
+# Path to a checkpoint to resume from (default: train from scratch).
+ckpt_path: null
+
+# Seed for python/numpy/pytorch RNGs. `null` lets Lightning pick.
+seed: null

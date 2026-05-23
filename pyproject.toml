@@ -1,0 +1,25 @@
+[tool.pytest.ini_options]
+addopts = [
+    "--color=yes",
+    "--durations=10",
+    "--strict-markers",
+]
+pythonpath = ["."]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]
+log_cli = "True"
+markers = [
+    "slow: slow tests (skip with `pytest -k 'not slow'`)",
+]
+minversion = "6.0"
+testpaths = ["tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: nocover",
+    "raise NotImplementedError",
+    "raise NotImplementedError()",
+    "if __name__ == .__main__.:",
+]

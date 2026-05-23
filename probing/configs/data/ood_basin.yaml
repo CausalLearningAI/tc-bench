@@ -1,0 +1,12 @@
+# Cross-basin out-of-distribution split (App. E, Fig. 1c).
+# Points the loader at the per-model OOD feature subset produced by
+# dataset/08_ood_basin_split.py.
+
+defaults:
+  - full
+
+# Stage 08 writes features_<model>_ood_splits/ alongside features_<model>/.
+# Override `feature_dataset_root` with the OOD root so each `features_<model>`
+# is the OOD-resplit variant. (Each subdir mirrors the regular HF
+# structure but with train/val/test re-carved by basin.)
+feature_dataset_root: ${oc.env:FEATURES_DIR,${oc.env:DATA_ROOT,${oc.env:HOME}/tcbench}/image_features}

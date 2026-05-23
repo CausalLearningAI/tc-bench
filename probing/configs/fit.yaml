@@ -1,0 +1,28 @@
+# Hydra config for `python -m probing.fit`.
+#
+# Composition: pick one of each group from the right column. Default
+# values below match the headline protocol in the paper (ridge probe on
+# CLS features, predicting P_c on the balanced split, seed 42).
+
+defaults:
+  - _self_
+  - probe: ridge          # one of probing/configs/probe/*.yaml
+  - model: dinov3-base    # one of probing/configs/model/*.yaml
+  - data:  balanced_980   # one of probing/configs/data/*.yaml
+  - override hydra/job_logging: default
+  - override hydra/hydra_logging: default
+
+# --- Top-level scalars --------------------------------------------------
+feature_type: cls         # cls | spatial_mean
+target:       pressure    # pressure | wind
+seed:         42
+
+# Where fitted probes (and per-fit metric JSONs) get written.
+output_dir: ${oc.env:PROBE_DIR,outputs/probes}
+
+hydra:
+  run:
+    dir: ${output_dir}/.hydra/${model.name}/${probe.name}/${feature_type}/${target}/seed${seed}
+  sweep:
+    dir: ${output_dir}/.hydra/_sweep
+    subdir: ${model.name}/${probe.name}/${feature_type}/${target}/seed${seed}

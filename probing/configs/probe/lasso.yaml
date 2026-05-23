@@ -1,0 +1,7 @@
+# L1-regularized linear probe — App. E.2 sparsity sanity check.
+name: lasso
+params:
+  alphas: [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+  cv_folds: 5
+  max_iter: 10000
+  seed: 0

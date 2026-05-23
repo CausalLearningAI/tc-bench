@@ -1,0 +1,6 @@
+# Regime-balanced split at the 980 hPa boundary (paper default).
+
+defaults:
+  - full
+
+balance_threshold: 980

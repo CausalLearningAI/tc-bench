@@ -1,0 +1,41 @@
+# @package _global_
+
+# ResNet50 Regressor Configuration (trained from scratch)
+
+_target_: src.models.resnet_regressor.ResNetRegressor
+
+# Input variable from datamodule batch
+input_variable: frames
+
+# Model architecture
+in_channels: 1
+arch: "resnet50"  # Options: "resnet18", "resnet34", "resnet50", "resnet101"
+base_channels: 64
+hidden_dim: 512
+dropout: 0.0  # Dropout rate for regularization (0.0-0.6)
+
+# Training
+learning_rate: 1e-3
+weight_decay: 1e-4  # Main regularization via weight decay
+
+# Optimizer
+optimizer: "adamw"
+scheduler: "cosine"
+warmup_steps: 500
+
+# Loss and targets
+loss_fn: "mse"
+target_variable: "pressure"
+
+# Normalization statistics (will be set by datamodule)
+pressure_mean: 0.0
+pressure_std: 1.0
+wind_mean: 0.0
+wind_std: 1.0
+
+# Performance
+compile_model: true
+
+# CSV output settings (for evaluation)
+output_csv_path: null
+model_name: "resnet50"

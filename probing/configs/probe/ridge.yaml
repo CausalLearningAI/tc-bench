@@ -1,0 +1,5 @@
+# Ridge regression with cross-validated alpha (the headline linear probe).
+name: ridge
+params:
+  alphas: [0.001, 0.01, 0.1, 1.0, 10.0, 100.0, 1000.0, 10000.0, 100000.0, 1000000.0]
+  cv_folds: 5

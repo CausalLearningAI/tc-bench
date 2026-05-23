@@ -1,0 +1,26 @@
+# Full feature dataset — no balancing, all agencies, all splits pooled.
+
+# Where dataset/09_extract_features.py wrote features_<model>/.
+feature_dataset_root: ${oc.env:FEATURES_DIR,${oc.env:DATA_ROOT,${oc.env:HOME}/tcbench}/image_features}
+
+# Splits to pool when loading features for fitting.
+splits: [train, validation, test]
+
+# Splits to use when generating diagnostic CSVs (test-only mirrors
+# the paper).
+test_splits: [test]
+
+# Regime threshold (hPa). 980 is the static-fidelity threshold used
+# throughout the paper. `null` disables regime balancing.
+balance_threshold: null
+regime_threshold_hpa: 980.0
+
+# Trajectory-level test fraction used by probing.fit.
+test_size: 0.2
+
+# Restrict to HURDAT-agency cyclones (Q_con wind-coupling protocol).
+us_only: false
+
+# Which VFM checkpoints the diagnose / aggregate entries should sweep
+# over. `null` means all 11 paper models (see probing.core.data.MODEL_FAMILIES).
+models: null

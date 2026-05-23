@@ -1,0 +1,72 @@
+# @package _global_
+#
+# Pixel-supervision ablation (App. E.1): train a ResNet from random
+# initialization on every IR frame in the dataset. Companion to
+# experiment=simple_cnn — different architecture, same role.
+
+defaults:
+  - override /data: null
+  - override /model: null
+  - override /callbacks:
+      - model_checkpoint
+      - lr_monitor
+      - rich_progress_bar
+  - override /trainer: gpu
+  - override /logger: wandb
+
+name: resnet18_scratch
+tags: ["pixel-sup", "resnet18", "from-scratch"]
+seed: 42
+
+data:
+  _target_: src.data.cyclone_datamodule.CycloneDataModule
+  dataset_path: ${oc.env:DATA_ROOT,${oc.env:HOME}/tcbench}/dataset_hf
+  batch_size: 64                  # paper §E.1
+  num_workers: 8
+  augment: true
+  pressure_category: all
+
+# Paper §E.1 hyperparameters (do not drift — scripts/fig6_pixelsup.sh
+# relies on this config matching the paper verbatim).
+model:
+  _target_: src.models.resnet_regressor.ResNetRegressor
+  arch: resnet18
+  in_channels: 1
+  base_channels: 64               # paper §E.1: "64 base channels"
+  hidden_dim: 128                 # paper §E.1: "128-dimensional hidden layer"
+  dropout: 0.3                    # paper §E.1: "dropout rate of 0.3"
+  input_variable: frames
+  learning_rate: 1.0e-4           # paper §E.1
+  weight_decay: 1.0e-2            # paper §E.1
+  optimizer: adamw
+  scheduler: cosine
+  warmup_steps: 100               # paper §E.1: "100-step warm-up"
+  loss_fn: huber
+  target_variable: pressure
+  compile_model: true
+
+trainer:
+  accelerator: gpu
+  devices: 1
+  precision: 32
+  max_epochs: 200
+  check_val_every_n_epoch: 1
+  log_every_n_steps: 50
+  gradient_clip_val: 1.0
+  accumulate_grad_batches: 1
+  deterministic: false
+  enable_progress_bar: true
+
+callbacks:
+  model_checkpoint:
+    monitor: "val_pressure_rmse"
+    mode: min
+    save_top_k: 3
+    filename: "epoch={epoch:02d}-val_rmse={val_pressure_rmse:.3f}"
+
+logger:
+  wandb:
+    project: "tcbench-pixelsup"
+    entity: ${oc.env:WANDB_ENTITY,null}
+    name: "resnet18_scratch"
+    tags: ${tags}

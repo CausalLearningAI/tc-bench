@@ -1,0 +1,13 @@
+# Hydra config for `python -m probing.aggregate`.
+
+defaults:
+  - _self_
+  - override hydra/job_logging: default
+  - override hydra/hydra_logging: default
+
+probe_dir:   ${oc.env:PROBE_DIR,outputs/probes}
+output_path: outputs/summary.csv
+
+hydra:
+  run:
+    dir: ${oc.env:PROBE_DIR,outputs/probes}/.hydra/aggregate

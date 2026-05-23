@@ -1,0 +1,42 @@
+# @package _global_
+
+# Simple CNN model trained from scratch (no pretraining)
+
+_target_: src.models.simple_cnn.SimpleCNN
+
+# Input variable from datamodule batch
+input_variable: frames
+
+# Architecture
+in_channels: 1
+base_channels: 128  # Base number of channels (128 -> 256 -> 512 -> 1024 -> 1024)
+hidden_dim: 1024
+dropout: 0.3
+
+# Training
+learning_rate: 1e-3
+weight_decay: 1e-4
+
+# Optimizer
+optimizer: "adamw"
+scheduler: "cosine"
+warmup_steps: 500
+
+# Loss function
+loss_fn: "mse"  # Can be "mse", "mae", or "huber"
+
+# Target variables
+target_variable: "pressure"  # Can be "pressure", "wind", or "both"
+
+# Normalization statistics (will be set by datamodule)
+pressure_mean: 0.0
+pressure_std: 1.0
+wind_mean: 0.0
+wind_std: 1.0
+
+# Model compilation (PyTorch 2.0+)
+compile_model: true
+
+# CSV output settings (for evaluation)
+output_csv_path: null
+model_name: "simple_cnn"

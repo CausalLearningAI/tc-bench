@@ -1,0 +1,7 @@
+# HURDAT-only split — required by Q_con (wind-coupling diagnostic) since
+# wind labels are most consistent for the US-tracked Atlantic basin.
+
+defaults:
+  - balanced_980
+
+us_only: true

@@ -1,0 +1,20 @@
+# @package _global_
+#
+# Default datamodule for the pixel-supervision ablation. Overridden by
+# every configs/experiment/*.yaml so feel free to tweak defaults here.
+
+_target_: src.data.cyclone_datamodule.CycloneDataModule
+
+# Path to the HF dataset produced by `dataset/06_build_hf.py`.
+# Override via `data.dataset_path=/path/to/dataset_hf` or set $DATA_ROOT.
+dataset_path: ${oc.env:DATA_ROOT,${oc.env:HOME}/tcbench}/dataset_hf
+
+batch_size:   64
+num_workers:  4
+
+# Filter cyclones whose pressure trace falls within one of the registered
+# categories. "all" disables filtering. See CycloneDataModule.PRESSURE_CATEGORIES.
+pressure_category: all
+
+# Apply discrete 90° rotations + flips for training. Disable for eval.
+augment: false

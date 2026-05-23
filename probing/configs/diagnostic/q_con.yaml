@@ -1,0 +1,3 @@
+# Q_con — manifold consistency probe (paper Eq. 4.4).
+# Joins q_stat[pressure] and q_stat[wind] into a single pressure-wind frame.
+name: q_con

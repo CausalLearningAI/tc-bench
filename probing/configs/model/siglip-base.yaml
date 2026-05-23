@@ -1,0 +1,5 @@
+# Model config for siglip-base. Stays metadata-only — feature extraction is
+# done upstream (dataset/09_extract_features.py).
+name:    siglip-base
+family:  siglip
+size:    base

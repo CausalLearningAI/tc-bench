@@ -1,0 +1,81 @@
+# @package _global_
+#
+# Pixel-supervision ablation (App. E.1): train a SimpleCNN from random
+# initialization on raw IR frames. Used in the paper to establish that
+# pressure-relevant signal *is* statistically present in the imagery,
+# which makes the regime-dependent failure of frozen VFM probes a
+# representational issue rather than a data issue.
+
+defaults:
+  - override /data: null
+  - override /model: null
+  - override /callbacks:
+      - model_checkpoint
+      - early_stopping
+      - lr_monitor
+      - model_summary
+      - rich_progress_bar
+  - override /logger: wandb
+  - override /trainer: gpu
+
+name: simple_cnn_scratch
+seed: 42
+
+data:
+  _target_: src.data.cyclone_datamodule.CycloneDataModule
+  dataset_path: ${oc.env:DATA_ROOT,${oc.env:HOME}/tcbench}/dataset_hf
+  batch_size: 128
+  num_workers: 4
+  augment: false                # SimpleCNN is frame-level, so basic aug suffices
+  pressure_category: all        # filter to a TC category if you want a category-restricted ablation
+
+model:
+  _target_: src.models.simple_cnn.SimpleCNN
+  input_variable: frames
+  in_channels: 1
+  base_channels: 128
+  hidden_dim: 1024
+  dropout: 0.0
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-4
+  optimizer: adamw
+  scheduler: cosine
+  warmup_steps: 500
+  loss_fn: mse
+  target_variable: pressure
+  compile_model: true
+
+trainer:
+  accelerator: gpu
+  devices: 1
+  precision: 32
+  max_epochs: 500
+  check_val_every_n_epoch: 2
+  log_every_n_steps: 50
+  gradient_clip_val: 1.0
+  accumulate_grad_batches: 1
+  deterministic: false
+  enable_progress_bar: true
+
+callbacks:
+  model_checkpoint:
+    monitor: "val/pressure_rmse"
+    mode: min
+    save_top_k: 3
+    auto_insert_metric_name: false
+    filename: "simple_cnn-epoch={epoch:02d}-val_pressure_rmse={val/pressure_rmse:.2f}"
+  early_stopping:
+    monitor: "val/pressure_rmse"
+    patience: 20
+    mode: min
+    min_delta: 0.01
+  lr_monitor:
+    logging_interval: step
+
+logger:
+  wandb:
+    project: "tcbench-pixelsup"
+    entity: ${oc.env:WANDB_ENTITY,null}
+    name: "simple_cnn_scratch"
+    tags: ["pixel-sup", "simple-cnn", "from-scratch"]
+    notes: "SimpleCNN (~40M params) trained from scratch on raw frames; pixel-supervision ablation."

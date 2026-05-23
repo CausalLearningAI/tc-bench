@@ -1,0 +1,22 @@
+# Hydra config for `python -m probing.diagnose`.
+
+defaults:
+  - _self_
+  - diagnostic: q_stat    # q_stat | q_dyn | q_con
+  - probe: ridge          # which probe family to load from disk
+  - data:  balanced_980
+  - override hydra/job_logging: default
+  - override hydra/hydra_logging: default
+
+feature_type: cls
+target:       pressure   # ignored for q_con (which loads both targets)
+seed:         42
+
+# Where the fitted probes live (probing.fit's `output_dir`).
+probe_dir:  ${oc.env:PROBE_DIR,outputs/probes}
+# Where the diagnostic CSVs go.
+output_dir: ${oc.env:DIAG_DIR,outputs/diagnostics}
+
+hydra:
+  run:
+    dir: ${output_dir}/.hydra/${diagnostic.name}/${feature_type}/${target}/seed${seed}

@@ -1,0 +1,17 @@
+# Lightweight Transformer probe — App. E.2 Table 4 capacity sanity check.
+# 2-layer encoder, hidden=128, 4 heads, PyTorch + AdamW + early stopping.
+name: transformer
+params:
+  hidden_dim: 128
+  num_layers: 2
+  num_heads: 4
+  num_tokens: 4
+  dropout: 0.1
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  batch_size: 64
+  max_epochs: 200
+  patience: 15
+  val_fraction: 0.1
+  seed: 0
+  device: cuda

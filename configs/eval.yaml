@@ -1,0 +1,21 @@
+# @package _global_
+#
+# Hydra root config for `src.eval` — evaluates a pixel-supervision
+# ablation checkpoint on the test split.
+
+defaults:
+  - _self_
+  - data:     cyclone_hf
+  - model:    simple_cnn
+  - logger:   null         # offline by default
+  - trainer:  default
+  - paths:    default
+  - extras:   default
+  - hydra:    default
+  - experiment: null
+
+task_name: "eval"
+tags: ["pixel-sup-eval"]
+
+# Required: path to the Lightning checkpoint to evaluate.
+ckpt_path: ???

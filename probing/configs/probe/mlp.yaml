@@ -1,0 +1,8 @@
+# Nonlinear MLP probe — App. E.2 Table 4 capacity sanity check.
+# sklearn MLPRegressor with a single 2048-unit hidden layer, ReLU, Adam.
+# Matches the protocol used in the paper.
+name: mlp
+params:
+  hidden_layer_sizes: [2048]
+  max_iter: 100
+  seed: 0
