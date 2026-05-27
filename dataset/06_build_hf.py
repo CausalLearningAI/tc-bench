@@ -276,30 +276,41 @@ class CycloneDatasetBuilder:
         
         # Split dataset
         print(f"\nSplitting dataset (train: {train_split}, val: {val_split}, test: {test_split})...")
-        
-        # First split: train vs (val+test)
-        train_test = dataset.train_test_split(
-            test_size=(val_split + test_split),
-            seed=seed
-        )
-        
-        # Second split: val vs test
-        if val_split > 0 and test_split > 0:
-            val_test = train_test['test'].train_test_split(
-                test_size=test_split / (val_split + test_split),
+
+        # Guard the degenerate case (e.g. single-storm smoke tests): if there
+        # are too few trajectories to give every split at least one example,
+        # keep them all in 'train'. Full builds (thousands of storms) are
+        # unaffected and use the unchanged HuggingFace split below.
+        n = len(dataset)
+        n_val, n_test = round(n * val_split), round(n * test_split)
+        if n < 3 or n_val < 1 or n_test < 1 or (n - n_val - n_test) < 1:
+            print(f"[warn] only {n} trajectory(ies); requested split is "
+                  "degenerate -> placing all in 'train'")
+            dataset_dict = DatasetDict({'train': dataset})
+        else:
+            # First split: train vs (val+test)
+            train_test = dataset.train_test_split(
+                test_size=(val_split + test_split),
                 seed=seed
             )
-            
-            dataset_dict = DatasetDict({
-                'train': train_test['train'],
-                'validation': val_test['train'],
-                'test': val_test['test']
-            })
-        else:
-            dataset_dict = DatasetDict({
-                'train': train_test['train'],
-                'test': train_test['test']
-            })
+
+            # Second split: val vs test
+            if val_split > 0 and test_split > 0:
+                val_test = train_test['test'].train_test_split(
+                    test_size=test_split / (val_split + test_split),
+                    seed=seed
+                )
+
+                dataset_dict = DatasetDict({
+                    'train': train_test['train'],
+                    'validation': val_test['train'],
+                    'test': val_test['test']
+                })
+            else:
+                dataset_dict = DatasetDict({
+                    'train': train_test['train'],
+                    'test': train_test['test']
+                })
         
         print("\n" + "="*80)
         print("Dataset Summary:")

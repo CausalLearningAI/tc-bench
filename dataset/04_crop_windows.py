@@ -1,149 +1,207 @@
-import xarray as xr
+"""Stage 04 — crop fixed-size IR windows around each best-track fix (§3).
+
+For every storm in the cleaned per-agency tables (stage 03), open the matching
+GridSat-B1 frame (stage 02) and cut a 224x224 window centred on the storm. The
+per-frame windows are stacked into one trajectory netCDF per cyclone, in the
+exact schema the consolidation stage (05) consumes:
+
+    irwin_cdr        (time, lat, lon)  brightness temperature, attr valid_range
+    Min pressure mb  (time,)           agency-native minimum central pressure
+    Max wind kts     (time,)           agency-native maximum sustained wind
+    LAT center       (time,)           storm-centre latitude
+    LON center       (time,)           storm-centre longitude
+    coord time       (time,)           "%Y.%m.%d.%H" strings on the 3-hour grid
+
+Output: ``$CROPPED_DIR/{agency}/{year}_{name}.nc`` plus a ``.done`` marker
+written by the SLURM wrapper.
+"""
+
+import argparse
+import logging
+from multiprocessing import Pool
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-import os
-import sys
-import traceback
-#year=sys.argv[1]
+import xarray as xr
+from scipy.interpolate import griddata
+from scipy.spatial import cKDTree
+
+AGENCY_CAPITAL = {
+    "atcf": "USA", "bom": "BOM", "hurdat_atl": "USA", "hurdat_epa": "USA",
+    "nadi": "NADI", "newdelhi": "NEWDELHI", "reunion": "REUNION",
+    "tokyo": "TOKYO", "wellington": "WELLINGTON",
+}
+HALF_WIDTH_POINTS = 112          # 224x224 windows (~1700 km at GridSat-B1 res)
+BT_MIN, BT_MAX = 140.0, 375.0    # valid brightness-temperature range (Kelvin)
+
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s | %(levelname)s | %(message)s")
+logger = logging.getLogger(__name__)
 
 
-#
+def iso_to_stamp(iso_time: str) -> str:
+    """``2005-08-23 00:00:00`` -> ``2005.08.23.00`` (GridSat filename stamp)."""
+    return iso_time.split(":")[0].replace("-", ".").replace(" ", ".")
 
 
-agencies=['atcf', 'bom', 'hurdat_atl', 'hurdat_epa', 'nadi',
-       'newdelhi', 'reunion', 'tokyo', 'wellington']
-agencies_capital=['USA','BOM','USA','USA','NADI','NEWDELHI','REUNION','TOKYO','WELLINGTON']
-
-agency_index=int(sys.argv[1])  #parallelization across the different agencies
-agency=agencies[agency_index]
-
-path_output=''
-path_gridsat_data=''
-path_ibtracs=''
-
-
-
-df_tot=pd.read_csv(os.path.join(path_ibtracs,'dataset_ibtracs_basic_cols_'+agency+'.csv'))
-var_press=agencies_capital[agency_index]+'_PRES mb'
-
-df_tot[var_press]=pd.to_numeric(df_tot[var_press],errors='coerce')
-var_wind=agencies_capital[agency_index]+'_WIND kts'
-
-df_tot[var_wind]=pd.to_numeric(df_tot[var_wind],errors='coerce')
-
-#IBTRACS use both the -180-180 and the 0-360 longitude formats depending on the agency
-#here all the longitude values are transformed into 
-
-df_tot['LON']=(df_tot['LON'].values + 180) % 360 - 180
-
-for year in [str(t) for t in range (1980,2025)]:
-    
-    df_year=df_tot.loc[df_tot['ISO_TIME'].str.contains(year)].reset_index(drop=True)
-    if len(df_year)==0:
-        continue
-    names=np.unique(df_year['NAME'].values)
-    half_width=7.5
-    half_width_points=112
-    for name in names:
-                
-            df=df_year.loc[df_year['NAME']==name].reset_index(drop=True)
-            os.makedirs(os.path.join(path_output,year), exist_ok=True)
-            print(os.path.exists(os.path.join(path_output,year)))
-            print(os.path.join(path_output,year))
-            #in case a previous download was interrupted
-            lst = os.listdir(os.path.join(path_output,year))#+str(year)+'/')
-            if len(lst)>0:
-                lst.sort()
-                lst=[lst[i] for i in range (len(lst)) if '.nc' in lst[i]]
-                if len(lst)>0:    
-                    os.remove(os.path.join(path_output,year,lst[-1]))   
-                    
-            times2=df['ISO_TIME']
-            times=df['ISO_TIME'].str.split(':').str[0]
-            times=times.str.replace(' ','.')
-            times=times.str.replace('-','.')
-            j=-1
-            cyclone_full=[]
-            for time1 in times:
-                #print(time1)
-            #print(time)
-                j+=1
-                file=path_gridsat_data+year+'/GRIDSAT-B1.'+time1+'.v02r01.nc'
-                
-                #print(file)
-                try:
-                    
-                    with open(os.path.join(path_output,year,'log_download.txt'), 'a') as f:
-                            f.write('opening '+file)
-                            f.write('\n')
-                            f.close()
-                    ds=xr.open_dataset(file)
-                    lat_ds=ds.lat.values
-                    lon_ds=ds.lon.values
-                    grid_spacing_lat=np.nanmean(np.diff(lat_ds))
-                    grid_spacing_lon=np.nanmean(np.diff(lon_ds))
-                    
-                    lat_cen=df['LAT'][df['ISO_TIME']==times2.iloc[j]].values[0]
-                    lon_cen=df['LON'][df['ISO_TIME']==times2.iloc[j]].values[0]
-                    lat_cen_index=np.argmin(np.abs(lat_ds-lat_cen))
-                    lon_cen_index=np.argmin(np.abs(lon_ds-lon_cen))
-                    nx=len(lon_ds)
+def crop_window(frame: xr.DataArray, lat_c: float, lon_c: float) -> np.ndarray:
+    """Cut a 224x224 window centred on ``(lat_c, lon_c)`` (lon wraps at 360)."""
+    lat, lon = frame.lat.values, frame.lon.values
+    i_lat = int(np.argmin(np.abs(lat - lat_c)))
+    i_lon = int(np.argmin(np.abs(lon - lon_c)))
+    lat_idx = np.arange(i_lat - HALF_WIDTH_POINTS, i_lat + HALF_WIDTH_POINTS)
+    lon_idx = np.arange(i_lon - HALF_WIDTH_POINTS, i_lon + HALF_WIDTH_POINTS) % len(lon)
+    window = frame.isel(
+        lat=xr.DataArray(lat_idx, dims="lat"),
+        lon=xr.DataArray(lon_idx, dims="lon"),
+    )
+    return window.values
 
 
-                    #the selection of the points in the longitudinal direction must be periodic across the boundary
-                    lon_sel=(np.arange(lon_cen_index - half_width_points, lon_cen_index+half_width_points) % nx)
-                    lat_sel=(np.arange(lat_cen_index - half_width_points, lat_cen_index+half_width_points))
+def fill_nans(frame: np.ndarray, max_nan_frac: float = 0.02) -> np.ndarray | None:
+    """Nearest-neighbour fill small NaN gaps; reject frames with large holes.
 
-                    pres=df['LON'][df['ISO_TIME']==times2.iloc[j]].values[0]
-                    
-                    cycl=ds['irwin_cdr'][0].isel(lon=xr.DataArray(lon_sel, dims="lon"),lat=xr.DataArray(lat_sel, dims="lat"))
-                    
-                    #lat and lon are redefined as difference from the coordinates of the center
-                    new_lat=np.arange(-half_width_points*grid_spacing_lat,half_width_points*grid_spacing_lat,grid_spacing_lat)
-                    new_lon=np.arange(-half_width_points*grid_spacing_lon,half_width_points*grid_spacing_lon,grid_spacing_lon)
+    Returns the filled frame, or ``None`` when the farthest NaN-to-valid
+    distance exceeds ``max_nan_frac`` of the frame width (frame unusable).
+    """
+    if not np.isnan(frame).any():
+        return np.clip(frame, BT_MIN, BT_MAX)
 
-                    cycl = cycl.assign_coords(lat=new_lat,lon=new_lon)
-                    cycl.attrs[var_press] = df[var_press][df['ISO_TIME']==times2.iloc[j]].values[0]
-                    cycl.attrs[var_wind] = df[var_wind][df['ISO_TIME']==times2.iloc[j]].values[0]
-                    cycl.attrs['time']=time1
-                    cycl = cycl.expand_dims(timestep=[j])
-                    np_cycl=cycl.values
-                    cycl.attrs['fraction nan']=np.count_nonzero(np.isnan(np_cycl)==True)/len(np_cycl.flatten())
+    h, w = frame.shape
+    yy, xx = np.mgrid[0:h, 0:w]
+    valid = ~np.isnan(frame)
+    if not valid.any():
+        return None
 
-                    #shape of (lat,lon) is supposed to be (224,224) for every snapshot
-                    if np.shape(cycl)!=(1,224,224):
-                        with open(os.path.join(path_output,'log_ERRORS.txt'),'a') as f:
-                            f.write('different shape '+name+'   '+year+' '+time1)
-                            f.write('  ')
-                            f.write('shape '+str(np.shape(cycl)))
-                            f.write('  ')
-                            f.write('lat cen  '+str(lat_cen)+' lon cen '+str(lon_cen))
-                            f.write('\n')
-                            
-                    elif cycl.attrs['fraction nan']>0.2:
-                        with open(os.path.join(path_output,'log_ERRORS.txt'),'a') as f:
-                            f.write('many nans '+name+'   '+year+' '+time1)
-                            f.write('  ')
-                            f.write(str(cycl.attrs['fraction nan']))
-                            f.write('  ')
-                            f.write('lat cen  '+str(lat_cen)+' lon cen '+str(lon_cen))
-                            f.write('\n')        
-                    
-                    #if os.path.exists(path_output+year+'_'+name+'/'+name+'_'+time1+'.nc')==False:
-                    cyclone_full.append(cycl)
-                    #cycl.to_netcdf(path_output+year+'_'+name+'/'+name+'_'+time1+'.nc')
-                        #print(path_output+year+'_'+name+'/'+name+'_'+time1+'.nc')
-                        
-                except Exception as e:
-                    with open(os.path.join(path_output,'log_ERRORS.txt'),'a') as f:
-                        f.write(year+'_'+name+time1)
-                        f.write('\n')
-                        if hasattr(e, "filename") and e.filename is not None:
-                            f.write(f"{type(e).__name__}: {e.filename}\n")
-                        else:
-                            f.write(f"{type(e).__name__}: {e}\n")
-                      
+    valid_pts = np.column_stack([yy[valid], xx[valid]])
+    nan_pts = np.column_stack([yy[~valid], xx[~valid]])
+    dist, _ = cKDTree(valid_pts).query(nan_pts, k=1)
+    if dist.max() > max_nan_frac * w:
+        return None
+
+    filled = frame.copy()
+    filled[~valid] = griddata(valid_pts, frame[valid], nan_pts, method="nearest")
+    return np.clip(filled, BT_MIN, BT_MAX)
+
+
+def _crop_cyclone(task: tuple) -> str:
+    """Crop one cyclone's trajectory and write it; returns a status string."""
+    df_cyc, year, name, var_press, var_wind, gridsat_dir, out_path = task
+    out_path = Path(out_path)
+    if out_path.exists():
+        return f"[skip] {out_path.name} exists"
+    gridsat_dir = Path(gridsat_dir)
+
+    frames, pres, wind, lat_c, lon_c, stamps = [], [], [], [], [], []
+    for _, row in df_cyc.sort_values("ISO_TIME").iterrows():
+        stamp = iso_to_stamp(row["ISO_TIME"])
+        nc = gridsat_dir / year / f"GRIDSAT-B1.{stamp}.v02r01.nc"
+        if not nc.exists():
+            continue
+        try:
+            ds = xr.open_dataset(nc)[["irwin_cdr"]]
+            window = crop_window(ds["irwin_cdr"].isel(time=0), row["LAT"], row["LON"])
+            ds.close()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("failed %s %s: %s", name, stamp, exc)
+            continue
+        if window.shape != (2 * HALF_WIDTH_POINTS, 2 * HALF_WIDTH_POINTS):
+            continue
+        filled = fill_nans(window)
+        if filled is None:
+            continue
+        frames.append(filled.astype(np.float32))
+        pres.append(row[var_press])
+        wind.append(row[var_wind])
+        lat_c.append(row["LAT"])
+        lon_c.append(row["LON"])
+        stamps.append(stamp)
+
+    if len(frames) < 2:
+        return f"[drop] {year}_{name}: <2 usable frames"
+
+    ds_out = xr.Dataset(
+        data_vars={
+            "irwin_cdr": (("time", "lat", "lon"), np.stack(frames)),
+            "Min pressure mb": (("time",), np.array(pres, dtype=np.float32)),
+            "Max wind kts": (("time",), np.array(wind, dtype=np.float32)),
+            "LAT center": (("time",), np.array(lat_c, dtype=np.float32)),
+            "LON center": (("time",), np.array(lon_c, dtype=np.float32)),
+        },
+        coords={
+            "time": stamps,
+            "lat": np.arange(2 * HALF_WIDTH_POINTS),
+            "lon": np.arange(2 * HALF_WIDTH_POINTS),
+        },
+    )
+    ds_out["irwin_cdr"].attrs["valid_range"] = [BT_MIN, BT_MAX]
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    ds_out.to_netcdf(
+        out_path,
+        encoding={"irwin_cdr": {"zlib": True, "complevel": 5, "dtype": "float32"}},
+    )
+    return f"[done] {out_path.name} ({len(frames)} frames)"
+
+
+def build_tasks(
+    input_dir: Path, gridsat_dir: Path, output_dir: Path,
+    years: list[str], agencies: list[str], only_cyclone: str,
+) -> list[tuple]:
+    """Enumerate one cropping task per (agency, year, cyclone) in the subset."""
+    tasks: list[tuple] = []
+    for agency in agencies:
+        csv = input_dir / f"dataset_ibtracs_basic_cols_{agency}.csv"
+        if not csv.exists():
+            logger.warning("[skip] no preprocessed table for %s", agency)
+            continue
+        capital = AGENCY_CAPITAL[agency]
+        var_press, var_wind = f"{capital}_PRES mb", f"{capital}_WIND kts"
+        df = pd.read_csv(csv)
+        df["LON"] = (df["LON"] + 180) % 360 - 180  # normalise to [-180, 180)
+        df["year"] = df["ISO_TIME"].str.slice(0, 4)
+        for year, df_year in df.groupby("year"):
+            if years and year not in years:
+                continue
+            for name, df_cyc in df_year.groupby("NAME"):
+                if only_cyclone and only_cyclone.lower() not in str(name).lower():
                     continue
+                out_path = output_dir / agency / f"{year}_{name}.nc"
+                tasks.append((df_cyc, year, name, var_press, var_wind,
+                              str(gridsat_dir), str(out_path)))
+    return tasks
 
-            cyclone_full=xr.concat(cyclone_full[:],dim='timestep')
-            cyclone_full.to_netcdf(os.path.join(path_output,year,name+'.nc'))
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--input_dir", type=Path, required=True,
+                        help="$PREPROCESSED_DIR (per-agency CSVs from stage 03).")
+    parser.add_argument("--gridsat_dir", type=Path, required=True,
+                        help="$GRIDSAT_DIR (downloaded frames from stage 02).")
+    parser.add_argument("--output_dir", type=Path, required=True,
+                        help="$CROPPED_DIR (per-cyclone trajectory netCDFs).")
+    parser.add_argument("--num_workers", type=int, default=1)
+    parser.add_argument("--years", default="", help="Space-separated; empty => all.")
+    parser.add_argument("--agencies", default="", help="Space-separated; empty => all.")
+    parser.add_argument("--only-cyclone", dest="only_cyclone", default="",
+                        help="Substring match on cyclone NAME; empty => all.")
+    args = parser.parse_args()
+
+    agencies = args.agencies.split() or list(AGENCY_CAPITAL)
+    tasks = build_tasks(args.input_dir, args.gridsat_dir, args.output_dir,
+                        args.years.split(), agencies, args.only_cyclone)
+    if not tasks:
+        raise SystemExit("[error] no cyclones matched the requested subset")
+
+    logger.info("Cropping %d cyclones with %d worker(s)", len(tasks), args.num_workers)
+    if args.num_workers > 1:
+        with Pool(args.num_workers) as pool:
+            results = pool.map(_crop_cyclone, tasks)
+    else:
+        results = [_crop_cyclone(t) for t in tasks]
+    for line in results:
+        logger.info(line)
+
+
+if __name__ == "__main__":
+    main()

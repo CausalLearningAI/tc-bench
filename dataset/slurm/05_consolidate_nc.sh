@@ -21,4 +21,5 @@ python "${REPO_ROOT}/dataset/05_consolidate_nc.py" \
     --workers "${SLURM_CPUS_PER_TASK:-8}" \
     "$@"
 
+touch "${CONSOLIDATED_DIR}/.done"
 echo "[done] consolidated netCDFs in ${CONSOLIDATED_DIR}"

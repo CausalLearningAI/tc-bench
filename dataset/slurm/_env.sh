@@ -33,6 +33,19 @@ FEATURES_DIR="${FEATURES_DIR:-${DATA_ROOT}/image_features}"
 export IBTRACS_CSV GRIDSAT_DIR PREPROCESSED_DIR CROPPED_DIR \
        CONSOLIDATED_DIR HF_DATASET FEATURES_DIR
 
+# --- Subset selection (smoke tests / partial builds) ---------------------
+# Stages 02/03/04 honour these filters. Empty => "all" (full paper build).
+#   YEARS         space-separated years, e.g. "2005" or "2003 2004 2005"
+#   AGENCIES      space-separated IbTRACS agencies, e.g. "hurdat_atl"
+#   ONLY_CYCLONE  substring match on cyclone NAME, e.g. "KATRINA"
+# Example 1-year single-storm smoke test:
+#   DATA_ROOT=$REPO_ROOT/smoke_data YEARS=2005 AGENCIES=hurdat_atl \
+#       ONLY_CYCLONE=KATRINA bash dataset/run_all.sh --to 07
+YEARS="${YEARS:-}"
+AGENCIES="${AGENCIES:-}"
+ONLY_CYCLONE="${ONLY_CYCLONE:-}"
+export YEARS AGENCIES ONLY_CYCLONE
+
 # --- Python env activation ----------------------------------------------
 # 1) Prefer the uv-managed .venv (README §1.2). 2) Fall back to conda only
 #    when CONDA_ENV is explicitly set in the caller's shell.

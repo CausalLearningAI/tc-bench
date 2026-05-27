@@ -7,10 +7,10 @@
 #SBATCH --mem=64G
 #SBATCH --time=04:00:00
 
-# Stage 03: merge IbTRACS tracks with GridSat brightness temperature
-# observations onto a common time grid.
-# Inputs:  $IBTRACS_CSV, $GRIDSAT_DIR
-# Output:  $PREPROCESSED_DIR
+# Stage 03: clean IbTRACS best tracks into per-agency tables on the 3-hour
+# grid (the cropping stage joins these to GridSat frames).
+# Inputs:  $IBTRACS_CSV
+# Output:  $PREPROCESSED_DIR/dataset_ibtracs_basic_cols_{agency}.csv
 
 source "$(dirname "${BASH_SOURCE[0]}")/_env.sh"
 banner "03_preprocess"
@@ -21,6 +21,9 @@ python "${REPO_ROOT}/dataset/03_preprocess.py" \
     --gridsat_dir "${GRIDSAT_DIR}" \
     --output_dir "${PREPROCESSED_DIR}" \
     --num_workers "${SLURM_CPUS_PER_TASK:-8}" \
+    --years "${YEARS}" \
+    --agencies "${AGENCIES}" \
     "$@"
 
+touch "${PREPROCESSED_DIR}/.done"
 echo "[done] preprocessed tracks in ${PREPROCESSED_DIR}"

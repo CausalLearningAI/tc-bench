@@ -19,9 +19,9 @@ are safe.
 |----|-----------------------------|-------------------------------------------------|
 | 01 | `01_download_ibtracs.py`    | `ibtracs/ibTRACS_since_1980.csv`                |
 | 02 | `02_download_gridsat.py`    | `gridsat/{year}/*.nc`                           |
-| 03 | `03_preprocess.py`          | `preprocessed/`                                 |
-| 04 | `04_crop_windows.py`        | `cropped/{cyclone_id}/{timestep}.nc`            |
-| 05 | `05_consolidate_nc.py`      | `consolidated/{cyclone_id}.nc`                  |
+| 03 | `03_preprocess.py`          | `preprocessed/dataset_ibtracs_basic_cols_{agency}.csv` |
+| 04 | `04_crop_windows.py`        | `cropped/{agency}/{year}_{name}.nc`             |
+| 05 | `05_consolidate_nc.py`      | `consolidated/{agency}/{year}_{name}.nc`        |
 | 06 | `06_build_hf.py`            | `dataset_hf/` (HuggingFace Arrow)               |
 | 07 | `07_normalize_stats.py`     | `dataset_hf/normalization_stats.json`           |
 | 08 | `08_ood_basin_split.py`     | `image_features/features_{model}_ood_splits/`   |
@@ -49,6 +49,10 @@ bash dataset/run_all.sh --from 06
 
 # Run a single stage:
 bash dataset/run_all.sh --only 09
+
+# One-year single-storm smoke test (stages 01-07, a few GB, CPU only):
+DATA_ROOT=$PWD/smoke_data YEARS=2005 AGENCIES=hurdat_atl \
+    ONLY_CYCLONE=KATRINA bash dataset/run_all.sh --to 07
 ```
 
 Outputs are placed under `$DATA_ROOT` (default `${HOME}/tcbench`).
@@ -78,6 +82,9 @@ the shell that calls a wrapper:
 | `MODELS`          | 11 paper models (stage 09) / `dinov3-base` (stage 08)  | space-separated VFM list             |
 | `BATCH_SIZE`      | `512`                                                  | stage 09 batch size                  |
 | `DEVICE`          | `cuda`                                                 | stage 09 inference device            |
+| `YEARS`           | unset (all)                                            | restrict stages 02–04 to these years |
+| `AGENCIES`        | unset (all 9)                                          | restrict stages 03–04 to these agencies |
+| `ONLY_CYCLONE`    | unset (all)                                            | restrict stages 02/04 to NAME substring |
 
 ## Notes
 

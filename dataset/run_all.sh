@@ -7,10 +7,10 @@
 #
 # Stages:
 #     01  download IbTRACS CSV
-#     02  download GridSat-B1 netCDFs
-#     03  preprocess (merge IbTRACS + GridSat onto common time grid)
-#     04  crop fixed-size windows around each best-track fix
-#     05  consolidate per-timestep crops into one netCDF per cyclone
+#     02  download GridSat-B1 netCDFs (best-track timestamps only)
+#     03  preprocess IbTRACS into per-agency tables on the 3-hour grid
+#     04  crop fixed-size GridSat windows around each best-track fix
+#     05  consolidate per-cyclone trajectories (NaN handling + validity masks)
 #     06  build the HuggingFace Arrow dataset (train/val/test splits)
 #     07  compute per-channel normalization statistics
 #     08  generate cross-basin OOD splits  (optional, paper-only)
@@ -69,7 +69,7 @@ stage_output() {
         03) echo "${PREPROCESSED_DIR}/.done" ;;
         04) echo "${CROPPED_DIR}/.done" ;;
         05) echo "${CONSOLIDATED_DIR}/.done" ;;
-        06) echo "${HF_DATASET}/dataset_info.json" ;;
+        06) echo "${HF_DATASET}/dataset_dict.json" ;;
         07) echo "${HF_DATASET}/normalization_stats.json" ;;
         08) echo "${FEATURES_DIR}/features_dinov3-base_ood_splits/.done" ;;
         09) echo "${FEATURES_DIR}/features_dinov3-base/dataset_info.json" ;;
@@ -88,7 +88,8 @@ want_stage() {
 }
 
 run_stage() {
-    local n="$1"  desc="$2"  wrapper="${SCRIPT_DIR}/slurm/${n}_${3}.sh"
+    local n="$1" desc="$2" tag="$3"
+    local wrapper="${SCRIPT_DIR}/slurm/${n}_${tag}.sh"
     local marker; marker="$(stage_output "${n}")"
     if [[ -n "${marker}" && -e "${marker}" ]]; then
         echo "[skip] stage ${n} (${desc}) — output exists: ${marker}"
