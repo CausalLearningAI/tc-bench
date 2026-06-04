@@ -1,8 +1,23 @@
-# TC-Bench: probing scientific alignment in vision foundation models
+<p align="center">
+  <video src="assets/PerceptionPhysicsParadox.mp4" controls autoplay muted loop playsinline width="900">
+    <a href="assets/PerceptionPhysicsParadox.mp4">Watch the Perception-Physics Paradox animation</a>
+  </video>
+</p>
 
-> *Companion code release for*
-> **"The Perception–Physics Paradox: Probing Scientific Alignment with TC-Bench"**
-> (Yao, Polesello, Pervez, Muller, Locatello — ICML 2026).
+<h1 align="center">TC-Bench</h1>
+
+<p align="center">
+  <strong>Probing scientific alignment in vision foundation models</strong><br>
+  Companion code release for <strong>"The Perception–Physics Paradox: Probing Scientific Alignment with TC-Bench"</strong><br>
+  Yao, Polesello, Pervez, Muller, Locatello — ICML 2026
+</p>
+
+<p align="center">
+  <a href="#1-installation">Install</a> ·
+  <a href="#2-data-construction-3">Build the dataset</a> ·
+  <a href="#3-reproducing-the-paper">Reproduce figures</a> ·
+  <a href="assets/PerceptionPhysicsParadox.mp4">Open the hero video</a>
+</p>
 
 TC-Bench is a global tropical-cyclone benchmark with a fully reproducible
 construction pipeline (§3) and a structured **probing protocol** (§4) for
@@ -12,6 +27,16 @@ headline finding: VFM representations stay perceptually robust but
 **collapse along physically meaningful axes in intense regimes**
 ($P_c < 980$ hPa), so they sail through standard OOD tests yet fail
 structural-alignment probes.
+
+### Dataset example
+
+<p align="center">
+  <img src="assets/cyclone_animation.gif" alt="Animated infrared tropical cyclone sequence from TC-Bench" width="720">
+</p>
+
+TC-Bench turns temporal infrared cyclone imagery like this into paired
+physical labels, frozen-model features, and regime-aware probes for
+pressure, wind, and structural alignment.
 
 This README is the single entry point for reproducing every paper
 result and figure. It is organised as:
