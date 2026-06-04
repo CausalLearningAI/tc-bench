@@ -17,8 +17,8 @@
 <p align="center">
   <a href="#1-installation">Install</a> ·
   <a href="#2-data-construction-3">Build the dataset</a> ·
-  <a href="#3-reproducing-the-paper">Reproduce figures</a> ·
-  <a href="assets/PerceptionPhysicsParadox.mp4">Open the hero video</a>
+  <a href="#3-reproducing-the-paper">Reproduce results</a> ·
+  <a href="#citing">Cite</a>
 </p>
 
 TC-Bench is a global tropical-cyclone benchmark with a fully reproducible
@@ -30,7 +30,7 @@ headline finding: VFM representations stay perceptually robust but
 ($P_c < 980$ hPa), so they sail through standard OOD tests yet fail
 structural-alignment probes.
 
-### Dataset example
+## Dataset example
 
 <p align="center">
   <img src="assets/cyclone_animation.gif" alt="Animated infrared tropical cyclone sequence from TC-Bench" width="214">
@@ -40,44 +40,27 @@ TC-Bench turns temporal infrared cyclone imagery like this into paired
 physical labels, frozen-model features, and regime-aware probes for
 pressure, wind, and structural alignment.
 
-This README is the single entry point for reproducing every paper
-result and figure. It is organised as:
-
-1. [Installation](#1-installation) — `uv`-based, no conda required.
-2. [Data construction (§3)](#2-data-construction-3) — build TC-Bench and
-   extract frozen VFM features.
-3. [Reproducing the paper (§4 + figures)](#3-reproducing-the-paper) — one
-   recipe per paper figure / table. The fastest path is the per-figure
-   wrappers under [`scripts/`](scripts/) — see [§3.3](#33-per-figure-reproduction-recipes).
-
-Subdirectory READMEs ([`dataset/`](dataset/), [`probing/`](probing/),
-[`figures/`](figures/), [`scripts/`](scripts/)) carry the deeper,
-file-level crosswalks. The paper PDF [`Cyclones.pdf`](Cyclones.pdf) is
-the source of truth for what each component is supposed to do.
-
-## Repository layout
+## What is included
 
 ```
-ClimGIVT/
+tc-bench/
 ├── dataset/      §3 construction pipeline (9 stages + run_all.sh + SLURM)
 ├── probing/      §4 probes: fit / diagnose / geometry / aggregate (Hydra)
-├── figures/      argparse-driven figure scripts + shared _style.py
-├── scripts/      per-figure bash wrappers that pin the paper settings
-├── src/          App. E.1 pixel-supervision ablation only
+├── figures/      figure-generation scripts
+├── scripts/      one-command wrappers for paper figures and tables
+├── src/          supervised pixel-baseline experiments
 ├── configs/      Hydra root for src/train + src/eval
-├── notebooks/    exploratory analyses (NOT load-bearing)
-├── tests/        unit + end-to-end smoke tests (56 tests, ~6 s, no GPU)
-├── Cyclones.pdf  the paper
-└── README.md     ← you are here
+├── notebooks/    exploratory analyses
+├── tests/        unit + smoke tests
+└── assets/       README media
 ```
 
 ---
 
 ## 1. Installation
 
-The dependency set is pure Python; we recommend [`uv`](https://docs.astral.sh/uv/)
-because it resolves the lock in seconds and avoids the conda hooks that
-broke the older `environment.yaml` flow on several cluster hosts.
+We recommend [`uv`](https://docs.astral.sh/uv/) for a fast, reproducible
+Python setup.
 
 ### 1.1 Install `uv`
 
@@ -88,9 +71,9 @@ curl -LsSf https://astral.sh/uv/install.sh | sh    # or: pipx install uv
 ### 1.2 One-shot setup with `_install.sh`
 
 `_install.sh` at the repo root creates `.venv` (Python 3.10), installs
-the `tcbench` package in editable mode, and pulls the full runtime
-dependency set. It auto-detects CUDA via `nvidia-smi` and picks the
-matching `torch==2.4.*` wheel index.
+the `tcbench` package in editable mode, and installs the runtime
+dependencies. It auto-detects CUDA with `nvidia-smi`; use `--cpu` to
+force CPU-only wheels.
 
 ```bash
 git clone https://github.com/CausalLearningAI/tc-bench.git
@@ -101,30 +84,25 @@ bash _install.sh --cuda cu118    # pin a different CUDA index
 source .venv/bin/activate
 ```
 
-The script is idempotent — re-running it upgrades packages in place
-and skips venv creation when `.venv/` already exists.
-
 ### 1.3 Sanity check
 
 ```bash
-pytest                                       # 56 tests, ~8 s, no GPU required
+pytest
 ```
 
-You should see `56 passed`. If you only changed `probing/` or `src/`,
-`pytest tests/test_probing_core.py` (~3 s — includes one tiny PyTorch
-TransformerProbe round-trip) is enough for the inner loop.
+The test suite is CPU-only and should finish quickly.
 
 ### 1.4 Optional: cluster (SLURM)
 
-The dataset and probing pipelines auto-detect SLURM. `dataset/slurm/_env.sh`
-and `probing/slurm/_env.sh` source `${REPO_ROOT}/.venv/bin/activate` when
-present and fall back to `conda activate "${CONDA_ENV}"` only if you
-explicitly set `CONDA_ENV` in your shell — so a fresh uv-only setup needs
-no extra flag. See those two files for the full list of overridable
-variables (`DATA_ROOT`, `FEATURES_DIR`, `PROBE_DIR`, `DIAG_DIR`, `GEOM_DIR`,
-`MODELS`, …). `_env.sh` also exports `PYTHONPATH=$REPO_ROOT` so the
-`figures/*.py` scripts (which `import figures._style`) resolve when run
-via `python figures/foo.py`.
+The dataset and probing pipelines support SLURM:
+
+```bash
+bash dataset/run_all.sh --slurm
+bash probing/run_all.sh --slurm
+```
+
+Environment variables such as `DATA_ROOT`, `FEATURES_DIR`, `PROBE_DIR`,
+and `MODELS` can be set from the shell before running these scripts.
 
 ---
 
@@ -208,82 +186,39 @@ contract.
 ## 3. Reproducing the paper
 
 After §2 you have `$DATA_ROOT/image_features/features_<model>/` for
-each VFM. Everything in §4 of the paper is reproduced from those
-features plus the four Hydra entries in [`probing/`](probing/).
+each VFM. The probing workflow then fits probes, runs diagnostics,
+computes geometry summaries, and aggregates the results.
 
 ### 3.1 The probing protocol
 
-The protocol composes four stages (`probing/run_all.sh` wires them
-together):
-
-```text
-fit       — fit a ridge probe per (model, feature_type, target, seed)
-            on a regime-balanced trajectory-level split.
-diagnose  — re-use the fitted linear map to build prediction CSVs for
-            the three diagnostics (Q_stat, Q_dyn, Q_con).
-geometry  — §4.2 per-pressure-bin effective dimensionality, feature
-            spread, PC1 means.
-aggregate — collect every per-fit JSON into outputs/summary.csv.
-```
-
-#### Paper sweep
+Run the full paper sweep:
 
 ```bash
-# Local end-to-end (≈ all four stages, single GPU):
 bash probing/run_all.sh
 
-# SLURM:
+# Or submit through SLURM:
 bash probing/run_all.sh --slurm
 
-# Subset:
+# Or run selected stages:
 bash probing/run_all.sh --only fit
 bash probing/run_all.sh --only diagnose geometry
 ```
 
-The default sweep is the one used in the paper:
+The default configuration matches the paper sweep:
 
 ```text
 11 VFMs × 2 feature_types (cls, spatial_mean) × 2 targets (pressure, wind)
        × 5 seeds (42–46) = 220 ridge fits
 ```
 
-#### Single fits (handy for debugging)
+The four stages are:
 
-```bash
-python -m probing.fit probe=ridge model=dinov3-base feature_type=cls target=pressure seed=42
-python -m probing.diagnose diagnostic=q_stat feature_type=cls target=pressure
-python -m probing.geometry  model=dinov3-base feature_type=cls
-python -m probing.aggregate
+```text
+fit       Fit ridge probes on frozen VFM features.
+diagnose  Build prediction CSVs for Q_stat, Q_dyn, and Q_con.
+geometry  Compute per-pressure-bin geometry summaries.
+aggregate Collect per-fit JSON files into outputs/summary.csv.
 ```
-
-#### Probe-capacity sanity checks (App. E.2)
-
-The protocol is **probe-agnostic**. To swap in a different probe
-family, change `probe=`:
-
-```bash
-python -m probing.fit probe=lasso       model=dinov3-base ...
-python -m probing.fit probe=mlp         model=dinov3-base ...   # sklearn MLPRegressor((2048,), max_iter=100) — paper App. E.2 default
-python -m probing.fit probe=transformer model=dinov3-base ...   # 2-layer encoder, hidden=128, 4 heads, 4 learned tokens
-```
-
-`probe=mlp` and `probe=transformer` together reproduce the two rows of
-Table 4.
-
-#### Normalized error reporting (Eq. 4.1)
-
-`probing.fit` records, for the overall test split and for each pressure
-regime (intense / moderate, threshold 980 hPa):
-
-* `rmse`, `mae` — raw values in hPa (or kt for wind),
-* `sigma` — the global standard deviation of the test-split target,
-* `normalized_rmse = rmse / sigma`, `normalized_mae = mae / sigma`.
-
-The same `sigma` is used as the denominator for the overall row *and*
-both regime rows, so the regime-level normalized errors are directly
-comparable — a per-regime σ would erase the moderate-to-intense gap
-reported in Fig. 2. The top-level JSON also carries `sigma_global` so
-the aggregator surfaces it in `outputs/summary.csv`.
 
 ### 3.2 Outputs layout
 
@@ -297,26 +232,19 @@ outputs/
 
 ### 3.3 Per-figure reproduction recipes
 
-The fastest path is the thin bash wrappers under [`scripts/`](scripts/).
-Each wrapper pins the exact paper settings (probe family, feature type,
-data subset, seed list) for one figure and delegates the heavy work to
-the `probing/slurm/*.sh` sweeps and the `figures/*.py` plot scripts —
-so the experiment metadata lives in one place per figure.
+The fastest way to reproduce figures and tables is through the wrappers
+under [`scripts/`](scripts/):
 
 ```bash
-# Everything, local:
 bash scripts/run_all.sh
 
-# Everything, via sbatch:
+# Or through SLURM:
 bash scripts/run_all.sh --slurm
 
-# Just one or two figures:
+# Selected figures:
 bash scripts/run_all.sh --only fig2 fig3
 bash scripts/fig4_geometry.sh
 ```
-
-Per-figure wrappers (see [`scripts/README.md`](scripts/README.md) for
-the full table):
 
 | Paper figure / table                             | Wrapper                                                                                       |
 |--------------------------------------------------|-----------------------------------------------------------------------------------------------|
@@ -331,143 +259,68 @@ the full table):
 | **§4.1 Q_con** pressure–wind coupling            | [`scripts/fig_qcon.sh`](scripts/fig_qcon.sh)                                                  |
 | **App. E.2 Table 4** MLP + Transformer probes    | [`scripts/appE2_nonlinear_probes.sh`](scripts/appE2_nonlinear_probes.sh)                      |
 
-Not reproducible from HEAD: **App. E.4 Table 5** (VideoMAE / V-JEPA2 /
-X-CLIP, 10 seeds) — the video-feature extraction code was intentionally
-removed (see `git log` and `CLAUDE.md`).
-
-If you'd rather drive the pipeline by hand, [`figures/`](figures/) holds
-the argparse-driven plot scripts; the table below names the exact
-artefact each one expects after the relevant `probing.*` stage.
-
-| Paper figure / table                              | Script                                                                                  | Prerequisite stage |
-|---------------------------------------------------|-----------------------------------------------------------------------------------------|--------------------|
-| **Fig. 1c**    cross-agency OOD bar chart         | [`figures/fig_ood.py`](figures/fig_ood.py)                                              | `fit data=ood_basin` (App. E) |
-| **Fig. 2**     Q_stat boxplot                     | [`figures/fig2_q_stat.py`](figures/fig2_q_stat.py)                                      | `diagnose diagnostic=q_stat` |
-| **Fig. 3**     Q_dyn coherence vs $P_c$           | [`figures/fig3_q_dyn.py`](figures/fig3_q_dyn.py)                                        | `diagnose diagnostic=q_dyn`  |
-| **Fig. 4**     PC1 / d_eff / feature spread       | [`figures/fig4_geometry.py`](figures/fig4_geometry.py)                                  | features only (stage 09)     |
-| **Fig. 4a (alt)** per-bin PC1 scatter             | [`figures/fig4_pca1.py`](figures/fig4_pca1.py)                                          | features only (stage 09)     |
-| **§4.1 Q_con** scatter + gap evolution            | [`figures/fig_q_con.py`](figures/fig_q_con.py)                                          | `diagnose diagnostic=q_con`  |
-| **Tab. 1**    probe values per model              | `outputs/summary.csv`                                                                   | `aggregate`                  |
-| **App. D**    agency histograms                   | [`figures/fig_data_distribution.py`](figures/fig_data_distribution.py)                  | `diagnose diagnostic=q_stat` |
-| **App. E.1**  supervised pixel-baseline vs probe  | [`figures/fig_baseline_vs_dinov3.py`](figures/fig_baseline_vs_dinov3.py)                | CNN predictions CSV (§3.4) + `diagnose q_stat` |
-| **App. E.2**  capacity sanity feature scatter     | [`figures/fig_feature_analysis.py`](figures/fig_feature_analysis.py)                    | `diagnose diagnostic=q_stat` |
-
-#### Recipes (copy/paste)
+You can also run the figure scripts directly once the corresponding
+diagnostics exist:
 
 ```bash
-# --- Fig. 2: Static fidelity (Q_stat) -----------------------------------
+# Fig. 2: static fidelity (Q_stat)
 python -m probing.diagnose diagnostic=q_stat feature_type=cls target=pressure
 python figures/fig2_q_stat.py \
     --predictions outputs/diagnostics/q_stat/predictions_cls_pressure_seed42.csv \
     --output figs/fig2_q_stat.pdf
 
-# --- Fig. 3: Dynamic coherence (Q_dyn) ----------------------------------
+# Fig. 3: dynamic coherence (Q_dyn)
 python -m probing.diagnose diagnostic=q_dyn feature_type=spatial_mean target=pressure
 python figures/fig3_q_dyn.py \
     --predictions outputs/diagnostics/q_dyn/predictions_spatial_mean_pressure_seed42.csv \
     --output figs/fig3_q_dyn.pdf
 
-# --- §4.1 Q_con: pressure–wind coupling ---------------------------------
-python -m probing.diagnose diagnostic=q_con data=us_only feature_type=cls
-python figures/fig_q_con.py \
-    --predictions outputs/diagnostics/q_con/predictions_cls_seed42.csv \
-    --output_dir figs/
-
-# --- Fig. 4: §4.2 latent collapse ---------------------------------------
+# Fig. 4: latent geometry
 python figures/fig4_geometry.py \
     --feature_path "$DATA_ROOT/image_features/features_dinov3-base" \
     --split test \
     --output figs/fig4_geometry.pdf
 
-# --- Tab. 1: collected probe metrics ------------------------------------
-python -m probing.aggregate                # writes outputs/summary.csv
+# §4.1 Q_con: pressure-wind coupling
+python -m probing.diagnose diagnostic=q_con data=us_only feature_type=cls
+python figures/fig_q_con.py \
+    --predictions outputs/diagnostics/q_con/predictions_cls_seed42.csv \
+    --output_dir figs/
 
-# --- App. D: agency histograms (defaults to outputs/diagnostics/q_stat) ----
-# Prerequisite: q_stat diagnostic for BOTH targets on `balanced_980`.
-# scripts/fig5_dataset_dist.sh does the missing wind fit lazily.
-python figures/fig_data_distribution.py
-
-# --- App. E.2: feature scatter -----------------------------------------
-python figures/fig_feature_analysis.py \
-    --results_dir outputs/diagnostics/q_stat
+# Table 1: collected probe metrics
+python -m probing.aggregate
 ```
 
-#### Known fragilities
+### 3.4 Optional experiments
 
-* [`figures/fig4_pca1.py`](figures/fig4_pca1.py) — optional sandbox panel
-  invoked at the tail of `scripts/fig4_geometry.sh`. Still hardcodes
-  `feat_path` in `__main__`; edit to `$DATA_ROOT/image_features/features_dinov3-base`
-  if you want the per-bin PC1 scatter. The wrapper continues even if this
-  step is skipped, because the main `fig4_geometry.pdf` is already saved.
-
-### 3.4 App. E.1: pixel-supervision ablation
+#### Pixel-supervision ablation
 
 The supervised pixel baseline lives under [`src/`](src/) and uses a
 separate Hydra root ([`configs/train.yaml`](configs/train.yaml)). It
-does *not* touch any VFM weights — it just trains a small CNN / ResNet
-end-to-end on raw IR frames so the paper can rule out "the data lacks
-the signal" as an explanation for the intense-regime collapse.
+trains small CNN / ResNet models end-to-end on raw IR frames.
 
 ```bash
-# SimpleCNN (~40 M params), 500 epochs, GPU:
 python -m src.train experiment=simple_cnn
-
-# ResNet-18 from scratch (paper §E.1 hyperparams pinned in the config):
 python -m src.train experiment=train_resnet
-
-# Quick smoke test (1 batch, no logger):
-python -m src.train experiment=simple_cnn trainer.fast_dev_run=true logger=null
-
-# Evaluate a checkpoint and dump per-sample predictions:
 python -m src.eval ckpt_path=/path/to/last.ckpt
 ```
 
-The eval entry writes a per-sample predictions CSV that feeds
-`figures/fig_baseline_vs_dinov3.py` (App. E.1 Figure). The ResNet-18
-hyperparameters in [`configs/experiment/train_resnet.yaml`](configs/experiment/train_resnet.yaml)
-match paper §E.1 verbatim (AdamW lr=1e-4 / wd=1e-2, hidden_dim=128,
-dropout=0.3, batch_size=64, cosine + 100-step warmup, 200 epochs) — do
-not drift them; [`scripts/fig6_pixelsup.sh`](scripts/fig6_pixelsup.sh)
-relies on the config being the source of truth.
+The evaluation CSV can be plotted with
+[`figures/fig_baseline_vs_dinov3.py`](figures/fig_baseline_vs_dinov3.py).
 
-### 3.5 Baselines (Dvorak, climatology)
+#### Baselines
 
 ```bash
-# Dvorak (1975) operational baseline:
 python -m probing.baselines.dvorak \
     --dataset_path "$DATA_ROOT/dataset_hf" \
     --output_path outputs/baselines/dvorak.json
 
-# Per-basin / per-month climatology baseline:
 python -m probing.baselines.climatology \
     --dataset_path "$DATA_ROOT/dataset_hf" \
     --output_dir outputs/baselines/
-
-# SLURM wrappers:
-sbatch probing/slurm/baseline_dvorak.sh
-sbatch probing/slurm/baseline_climatology.sh
 ```
 
 ---
-
-## Tips and known caveats
-
-- **Hydra previews.** Every Hydra entry supports `--cfg job` to print
-  the fully resolved config without running anything:
-  `python -m probing.fit probe=ridge model=dinov3-base --cfg job`.
-- **Cluster GPUs.** `MLPProbe` is sklearn-backed and runs on CPU.
-  `TransformerProbe` defaults to `device=cuda`; if a login node is
-  busy, fall back with `probe.params.device=cpu` or submit via
-  `sbatch probing/slurm/fit_all.sh`. A reloaded `TransformerProbe`
-  infers its device from the loaded model parameters, so a CPU host
-  can read a probe trained on GPU without manual `.to()` calls.
-- **Don't bring deleted files back.** The VFM Lightning regressors,
-  Koopman scripts, `eval_old.py`, MNIST configs, and `fast_datamodule`
-  were intentionally removed (`git log` carries the rationale). If you
-  think you need them, check whether the probing protocol now covers
-  the use case.
-- **rtk caches tee output.** If `pytest` reports "No tests collected"
-  but a stale rtk log claims failure, trust the live exit code.
 
 ## Citing
 
