@@ -1,7 +1,9 @@
 <p align="center">
-  <video src="assets/PerceptionPhysicsParadox.mp4" controls autoplay muted loop playsinline width="900">
-    <a href="assets/PerceptionPhysicsParadox.mp4">Watch the Perception-Physics Paradox animation</a>
-  </video>
+  <a href="assets/PerceptionPhysicsParadox.mp4">
+    <img src="assets/PerceptionPhysicsParadox.gif" alt="Perception-Physics Paradox animation" width="900">
+  </a>
+  <br>
+  <a href="assets/PerceptionPhysicsParadox.mp4">Open the Perception-Physics Paradox MP4</a>
 </p>
 
 <h1 align="center">TC-Bench</h1>
@@ -31,7 +33,7 @@ structural-alignment probes.
 ### Dataset example
 
 <p align="center">
-  <img src="assets/cyclone_animation.gif" alt="Animated infrared tropical cyclone sequence from TC-Bench" width="720">
+  <img src="assets/cyclone_animation.gif" alt="Animated infrared tropical cyclone sequence from TC-Bench" width="214">
 </p>
 
 TC-Bench turns temporal infrared cyclone imagery like this into paired
