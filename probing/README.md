@@ -2,7 +2,7 @@
 
 Implementation of the structural-alignment probing framework from §4 of
 the paper. Three diagnostic probes, one §4.2 failure-mode analysis, and
-all the plumbing required to reproduce Figures 2–4 from a directory of
+the command-line entry points needed to reproduce Figures 2–4 from a directory of
 extracted features.
 
 ## Concepts

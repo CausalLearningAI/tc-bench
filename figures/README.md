@@ -9,7 +9,7 @@ Each script reads artefacts from `outputs/` (produced by
 | `fig3_q_dyn.py`                 | Fig. 3 (Q_dyn coherence vs P_c)                  | `outputs/diagnostics/q_dyn/predictions_*.csv`              |
 | `fig_q_con.py`                  | §4.1 Q_con scatter + gap evolution               | `outputs/diagnostics/q_con/predictions_*.csv`              |
 | `fig4_geometry.py`              | Fig. 4 (PC1, d_eff, feature spread)              | `outputs/geometry/<model>/<feature_type>.csv`              |
-| `fig4_pca1.py`                  | Fig. 4a sandbox (per-bin PCA1 scatter)           | raw features                                               |
+| `fig4_pca1.py`                  | Fig. 4a per-bin PCA1 scatter                     | raw features                                               |
 | `fig_data_distribution.py`      | App. D agency histograms                         | `outputs/diagnostics/q_stat/predictions_cls_{pressure,wind}_seed42.csv` |
 | `fig_ood.py`                    | Fig. 1c (cross-agency OOD bar chart)             | `outputs/probes/<model>{,_ood_<basin>}/ridge/cls_pressure_seed42.json` |
 | `fig_baseline_vs_dinov3.py`     | App. E.1 supervised pixel-baseline vs probe      | CNN predictions CSV + Q_stat CSV                           |
@@ -29,7 +29,7 @@ from figures._style import set_icml_style, lipari_family_palette, savefig
 * `savefig(fig, "figs/foo.pdf", formats=("pdf", "png"))` writes both
   formats and creates parent directories.
 
-## Reproducing all figures
+## Example commands
 
 ```bash
 # Static fidelity:
